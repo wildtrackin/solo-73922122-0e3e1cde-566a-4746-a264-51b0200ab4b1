@@ -88,12 +88,26 @@ async def get_job(job_id: str):
 
 @app.post("/api/jobs/{job_id}/cancel")
 async def cancel_job(job_id: str):
-    job = manager.request_cancel(job_id)
+    job = manager.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="任务不存在")
+    before = job.status
+    updated = manager.request_cancel(job_id)
     # Immediate acknowledgement; terminal state comes via polling/SSE once
     # every in-flight trial subprocess has actually stopped.
-    return {"id": job_id, "acknowledged": True, "status": job.status}
+    if updated is not None and updated.status == before and before in {
+        "succeeded", "no_error", "timed_out", "failed", "canceled"
+    }:
+        # A terminal job is immutable. A published success keeps its result
+        # and is explicitly not cancelable.
+        if before == "succeeded":
+            detail = "任务已成功并发布最小样本，结果已生效，不可取消。"
+        elif before == "canceled":
+            detail = "任务此前已取消。"
+        else:
+            detail = f"任务已处于终态 {before}，不可取消。"
+        raise HTTPException(status_code=409, detail=detail)
+    return {"id": job_id, "acknowledged": True, "status": updated.status}
 
 
 @app.get("/api/jobs/{job_id}/events")
@@ -119,10 +133,16 @@ async def download_result(job_id: str):
     job = manager.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="任务不存在")
-    if job.status != "succeeded" or not job.result_path:
+    # Download eligibility is part of the single atomic publish: only a
+    # succeeded job with a materialized result file is downloadable. While a
+    # result is still being written (or after cancel/timeout/failure) there
+    # is nothing to download.
+    snapshot = job.public()
+    if job.status != "succeeded" or not snapshot["has_result"]:
         raise HTTPException(
             status_code=409,
-            detail="仅 succeeded 状态的任务可下载最小样本（取消/超时不会发布）",
+            detail="仅 succeeded 状态且已发布成品的任务可下载最小样本"
+                   "（取消/超时/失败不会发布）",
         )
     if not os.path.exists(job.result_path):
         raise HTTPException(status_code=410, detail="结果文件已过期清理")

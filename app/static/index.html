@@ -230,6 +230,11 @@ function renderJob(j) {
          <button class="primary" type="button">下载最小样本（${j.result_rows} 行）</button></a>` : "";
   const cancel = !TERMINAL.has(j.status)
     ? `<button class="danger" type="button" data-cancel="${esc(j.id)}">取消任务</button>` : "";
+  const terminalHint = j.status === "succeeded"
+    ? `<span class="muted">成品已发布并锁定，任务不可取消。</span>`
+    : j.status === "canceling"
+      ? `<span class="muted">取消已受理：在跑试跑停止后标记已取消，期间不会发布成品。</span>`
+      : "";
   return `
   <div class="job" data-id="${esc(j.id)}">
     <div class="job-head">
@@ -252,7 +257,7 @@ function renderJob(j) {
       <table><thead><tr><th>#</th><th>试跑行数</th><th>结果</th><th>异常类</th></tr></thead>
       <tbody>${hist || '<tr><td colspan="4" class="muted">暂无试跑</td></tr>'}</tbody></table>
     </div>
-    <div class="row">${cancel}${download}</div>
+    <div class="row">${cancel}${download}${terminalHint}</div>
   </div>`;
 }
 
@@ -270,8 +275,14 @@ $("#jobs").addEventListener("click", async (ev) => {
   const id = b.dataset.cancel;
   b.disabled = true; b.textContent = "取消请求已受理…";
   const r = await fetch(`/api/jobs/${id}/cancel`, { method:"POST" });
-  if (r.ok) toast("取消请求已受理，将在所有试跑停止后标记为已取消");
-  else toast("取消失败");
+  if (r.ok) {
+    toast("取消请求已受理，将在所有试跑停止后标记为已取消");
+  } else {
+    let detail = "取消失败";
+    try { detail = (await r.json()).detail || detail; } catch (_) { /* ignore */ }
+    toast(detail);
+  }
+  refreshJobs();
 });
 
 // Polling is the primary channel (works without SSE support too).
