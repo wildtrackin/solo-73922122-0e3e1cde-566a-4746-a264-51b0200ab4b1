@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>检验数据最小样本缩减工具</title>
+<style>
+  :root {
+    --bg: #f4f6fa; --card: #fff; --line: #d9dee8; --text: #1f2937;
+    --muted: #6b7280; --primary: #2563eb; --primary-d: #1d4ed8;
+    --ok: #047857; --warn: #b45309; --err: #b91c1c; --info: #1e40af;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, "Segoe UI", "PingFang SC",
+         "Microsoft YaHei", sans-serif; background:var(--bg); color:var(--text); }
+  header { background:#0f172a; color:#fff; padding:18px 28px; }
+  header h1 { margin:0 0 4px; font-size:20px; }
+  header p { margin:0; color:#94a3b8; font-size:13px; }
+  main { max-width:1180px; margin:24px auto; padding:0 20px;
+         display:grid; grid-template-columns: 420px 1fr; gap:20px; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; } }
+  .card { background:var(--card); border:1px solid var(--line);
+          border-radius:10px; padding:18px; }
+  .card h2 { margin:0 0 12px; font-size:15px; }
+  label { display:block; font-size:13px; font-weight:600; margin:12px 0 6px; }
+  input[type=file], textarea, select {
+    width:100%; border:1px solid var(--line); border-radius:8px;
+    padding:9px 10px; font-size:13px; font-family:inherit; background:#fff; }
+  textarea { font-family:var(--mono); min-height:120px; resize:vertical; }
+  button { border:0; border-radius:8px; padding:9px 16px; font-size:13px;
+           font-weight:600; cursor:pointer; }
+  .primary { background:var(--primary); color:#fff; }
+  .primary:hover { background:var(--primary-d); }
+  .primary:disabled { background:#93b4f7; cursor:not-allowed; }
+  .danger { background:#fee2e2; color:var(--err); }
+  .danger:hover { background:#fecaca; }
+  .ghost { background:#eef2f7; color:#334155; }
+  .row { display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap; }
+  .hint { font-size:12px; color:var(--muted); margin-top:4px; }
+  .demo { border:1px dashed var(--line); border-radius:8px; padding:10px 12px;
+          margin-top:10px; font-size:12.5px; background:#f8fafc; }
+  .demo b { display:block; margin-bottom:3px; }
+  .demo .actions { margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; }
+  .demo button { padding:5px 10px; font-size:12px; }
+  .jobs { display:flex; flex-direction:column; gap:14px; }
+  .job { border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+         background:#fff; }
+  .job-head { display:flex; justify-content:space-between; gap:10px;
+              align-items:flex-start; }
+  .job-id { font-family:var(--mono); font-size:12px; color:var(--muted); }
+  .badge { font-size:12px; font-weight:700; padding:3px 9px; border-radius:999px;
+           white-space:nowrap; }
+  .badge.queued    { background:#e0e7ff; color:#3730a3; }
+  .badge.running   { background:#dbeafe; color:#1d4ed8; }
+  .badge.canceling { background:#fef3c7; color:#92400e; }
+  .badge.succeeded { background:#d1fae5; color:var(--ok); }
+  .badge.no_error  { background:#e0f2fe; color:#075985; }
+  .badge.timed_out { background:#ffedd5; color:#9a3412; }
+  .badge.failed    { background:#fee2e2; color:var(--err); }
+  .badge.canceled  { background:#f3f4f6; color:#374151; }
+  .kv { display:grid; grid-template-columns: 110px 1fr; gap:4px 10px;
+        font-size:12.5px; margin-top:10px; }
+  .kv .k { color:var(--muted); }
+  .kv .v { word-break:break-all; }
+  code.err { font-family:var(--mono); font-size:12px; background:#fef2f2;
+             color:#991b1b; padding:2px 6px; border-radius:5px; }
+  .bar { height:8px; background:#eef2f7; border-radius:999px; overflow:hidden;
+         margin-top:10px; }
+  .bar > i { display:block; height:100%; background:var(--primary);
+             transition:width .3s; }
+  .history { margin-top:10px; max-height:150px; overflow:auto;
+             border:1px solid var(--line); border-radius:8px; }
+  .history table { width:100%; border-collapse:collapse; font-size:12px;
+                   font-family:var(--mono); }
+  .history th, .history td { padding:4px 8px; border-bottom:1px solid #eef2f7;
+                             text-align:left; }
+  .history th { background:#f8fafc; position:sticky; top:0; }
+  .msg { margin-top:10px; font-size:12.5px; padding:8px 10px; border-radius:8px; }
+  .msg.info { background:#eff6ff; color:var(--info); }
+  .msg.warn { background:#fffbeb; color:var(--warn); }
+  .msg.err  { background:#fef2f2; color:var(--err); }
+  .msg.ok   { background:#ecfdf5; color:var(--ok); }
+  .toast { position:fixed; right:20px; bottom:20px; background:#111827;
+           color:#fff; padding:10px 16px; border-radius:8px; font-size:13px;
+           opacity:0; transition:opacity .25s; pointer-events:none;
+           max-width:380px; }
+  .toast.show { opacity:1; }
+  .muted { color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>检验数据最小样本缩减工具</h1>
+  <p>上传至多 1000 行检验 CSV（sample_id, item, value 均为文本），输入查询 readings 的确定性 SELECT，
+     自动删减至满足“相同异常类 + 首行消息、再删任意一行即不复现”的最小子集。每次试跑独立进程与 DuckDB 库，限时 2 秒。</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>新建缩减任务</h2>
+    <form id="job-form">
+      <label for="file">检验 CSV（表头必须为 sample_id,item,value；≤1000 行）</label>
+      <input type="file" id="file" name="file" accept=".csv,text/csv" required />
+      <div class="hint" id="file-hint"></div>
+
+      <label for="sql">确定性 SELECT（查询关系名 readings）</label>
+      <textarea id="sql" name="sql" placeholder="SELECT item, SUM(1 // CAST(value AS INTEGER)) FROM readings GROUP BY item" required></textarea>
+      <div class="hint">仅允许单条只读 SELECT/WITH；禁止随机函数等非确定性表达式与多语句。</div>
+
+      <div class="row">
+        <button class="primary" type="submit" id="submit-btn">提交任务</button>
+        <span class="muted">可在多个浏览器窗口同时提交，任务与取消互不干扰。</span>
+      </div>
+    </form>
+
+    <h2 style="margin-top:22px">演示数据</h2>
+    <div id="demos"><span class="muted">演示加载中…</span></div>
+  </section>
+
+  <section class="card">
+    <h2>任务列表 <span class="muted" style="font-weight:400">（实时刷新，多窗口各自独立）</span></h2>
+    <div class="jobs" id="jobs"><span class="muted">暂无任务。</span></div>
+  </section>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const TERMINAL = new Set(["succeeded","no_error","timed_out","failed","canceled"]);
+const LABELS = {
+  queued:"排队中", running:"运行中", canceling:"取消中…",
+  succeeded:"已完成（已发布最小样本）", no_error:"原查询成功，无需缩减",
+  timed_out:"试跑超时，任务未完成", failed:"失败", canceled:"已取消"
+};
+const PHASE_LABELS = {
+  baseline:"基线试跑", reduce:"删减试跑", verify_single:"1-最小性核验",
+  done:"完成", init:"初始化"
+};
+
+function toast(text) {
+  const t = $("#toast"); t.textContent = text; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 3500);
+}
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g,
+    c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// --------------------------------------------------------------- submission
+$("#job-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = $("#file").files[0];
+  const sql = $("#sql").value.trim();
+  if (!f || !sql) { toast("请选择 CSV 并填写 SQL"); return; }
+  const fd = new FormData();
+  fd.append("file", f); fd.append("sql", sql);
+  const btn = $("#submit-btn"); btn.disabled = true; btn.textContent = "提交中…";
+  try {
+    const r = await fetch("/api/jobs", { method:"POST", body: fd });
+    const data = await r.json();
+    if (!r.ok) { toast("被拒绝：" + (data.detail || r.status)); return; }
+    toast("任务已受理：" + data.id.slice(0, 8));
+    await refreshJobs(true);
+  } catch (e) {
+    toast("提交失败：" + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "提交任务";
+  }
+});
+$("#file").addEventListener("change", () => {
+  const f = $("#file").files[0];
+  $("#file-hint").textContent = f ? `已选择：${f.name}（${f.size} 字节）` : "";
+});
+
+// -------------------------------------------------------------------- demos
+async function loadDemos() {
+  try {
+    const r = await fetch("/api/demo");
+    const { demos } = await r.json();
+    $("#demos").innerHTML = demos.map(d => `
+      <div class="demo">
+        <b>${esc(d.name)}</b>
+        <div>${esc(d.description)}</div>
+        <div class="muted">异常：<code class="err">${esc(d.error_type)}</code> · ${esc(d.rows)} 行 → 期望最小 ${esc(d.expected_min_rows)} 行</div>
+        <div class="actions">
+          <button class="ghost" data-demo="${esc(d.id)}" data-act="fill">填入查询</button>
+          <a href="/api/demo/${esc(d.id)}/csv" download><button class="ghost" type="button">下载 CSV</button></a>
+        </div>
+      </div>`).join("");
+    $("#demos").addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-demo]");
+      if (!b) return;
+      const demo = demos.find(d => d.id === b.dataset.demo);
+      $("#sql").value = demo.sql;
+      toast(`已填入「${demo.name}」的查询，请选择对应的演示 CSV（可先下载查看）`);
+    });
+  } catch (e) {
+    $("#demos").innerHTML = '<span class="muted">演示信息加载失败</span>';
+  }
+}
+
+// ------------------------------------------------------------- job rendering
+function statusBadge(s) {
+  return `<span class="badge ${s}">${esc(LABELS[s] || s)}</span>`;
+}
+function renderJob(j) {
+  const p = j.progress || {};
+  const pct = j.total_rows > 0
+    ? Math.max(2, Math.round((1 - (p.current_rows ?? j.total_rows) / j.total_rows) * 100))
+    : 0;
+  const hist = (p.history || []).slice().reverse().map(h =>
+    `<tr><td>${h.trial}</td><td>${h.rows_tested}</td><td>${esc(h.status)}</td>
+     <td>${esc(h.error_type ?? "")}</td></tr>`).join("");
+  let msg = "";
+  if (j.message) {
+    const cls = j.status === "succeeded" || j.status === "no_error" ? "ok"
+      : j.status === "canceled" ? "info"
+      : j.status === "timed_out" || j.status === "failed" ? "err" : "info";
+    msg = `<div class="msg ${cls}">${esc(j.message)}</div>`;
+  }
+  const errBlock = j.error_type ? `
+    <div class="kv">
+      <span class="k">异常类</span><span class="v"><code class="err">${esc(j.error_type)}</code></span>
+      <span class="k">首行消息</span><span class="v"><code class="err">${esc(j.first_line)}</code></span>
+    </div>` : "";
+  const download = j.status === "succeeded" && j.has_result
+    ? `<a href="/api/jobs/${esc(j.id)}/download" download>
+         <button class="primary" type="button">下载最小样本（${j.result_rows} 行）</button></a>` : "";
+  const cancel = !TERMINAL.has(j.status)
+    ? `<button class="danger" type="button" data-cancel="${esc(j.id)}">取消任务</button>` : "";
+  return `
+  <div class="job" data-id="${esc(j.id)}">
+    <div class="job-head">
+      <div>
+        <div class="job-id">${esc(j.id)}</div>
+        <div class="muted">创建于 ${new Date(j.created_at * 1000).toLocaleTimeString()} · 输入 ${j.total_rows} 行</div>
+      </div>
+      ${statusBadge(j.status)}
+    </div>
+    <div class="bar"><i style="width:${pct}%"></i></div>
+    <div class="kv">
+      <span class="k">阶段</span><span class="v">${esc(PHASE_LABELS[p.phase] || p.phase || "-")}</span>
+      <span class="k">已完成试跑</span><span class="v">${p.trials_completed ?? 0} 次（每次独立进程/独立 DuckDB，限时 ${j.trial_timeout_seconds} 秒）</span>
+      <span class="k">当前候选</span><span class="v">${p.current_rows ?? j.total_rows} 行 / 原始 ${j.total_rows} 行</span>
+      <span class="k">最近试跑</span><span class="v">${esc(p.last_result || "-")}</span>
+    </div>
+    ${errBlock}
+    ${msg}
+    <div class="history">
+      <table><thead><tr><th>#</th><th>试跑行数</th><th>结果</th><th>异常类</th></tr></thead>
+      <tbody>${hist || '<tr><td colspan="4" class="muted">暂无试跑</td></tr>'}</tbody></table>
+    </div>
+    <div class="row">${cancel}${download}</div>
+  </div>`;
+}
+
+async function refreshJobs(refreshAll = false) {
+  const r = await fetch("/api/jobs");
+  const { jobs } = await r.json();
+  const root = $("#jobs");
+  if (!jobs.length) { root.innerHTML = '<span class="muted">暂无任务。</span>'; return; }
+  root.innerHTML = jobs.map(renderJob).join("");
+}
+
+$("#jobs").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-cancel]");
+  if (!b) return;
+  const id = b.dataset.cancel;
+  b.disabled = true; b.textContent = "取消请求已受理…";
+  const r = await fetch(`/api/jobs/${id}/cancel`, { method:"POST" });
+  if (r.ok) toast("取消请求已受理，将在所有试跑停止后标记为已取消");
+  else toast("取消失败");
+});
+
+// Polling is the primary channel (works without SSE support too).
+loadDemos();
+refreshJobs();
+setInterval(refreshJobs, 1000);
+</script>
+</body>
+</html>

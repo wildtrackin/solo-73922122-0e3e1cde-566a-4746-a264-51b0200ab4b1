@@ -1,0 +1,22 @@
+services:
+  minimizer:
+    build: .
+    image: sample-minimizer:1.0.0
+    container_name: sample-minimizer
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persist job artifacts (uploads and minimal samples) outside the image.
+      - job-data:/data
+    environment:
+      SAMPLE_MINIMIZER_WORKDIR: /data/jobs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/jobs', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  job-data:

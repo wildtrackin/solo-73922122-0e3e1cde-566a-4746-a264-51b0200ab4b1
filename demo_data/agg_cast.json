@@ -1,0 +1,9 @@
+{
+  "id": "agg_cast",
+  "name": "演示 B：HAVING 门控下的双行最小依赖",
+  "description": "probe 组恰有两行（一个正常、一个非数值 N/A）。HAVING count(*)>=2 仅在两行同时保留时放行，随后 CAST(MAX(value) AS INTEGER) 抛 ConversionException；删任意一行该组被过滤即成功，因此最小样本必须保留这 2 行（保持原行序）。",
+  "rows": 1000,
+  "expected_min_rows": 2,
+  "error_type": "ConversionException",
+  "sql": "SELECT item, CAST(MAX(value) AS INTEGER) AS m FROM readings GROUP BY item HAVING count(*) >= 2"
+}

@@ -1,0 +1,9 @@
+{
+  "id": "agg_divzero",
+  "name": "演示 A：聚合执行阶段才触发的除零错误",
+  "description": "所有 value 都能成功 CAST 为整数；只有 GROUP BY 聚合执行 SUM(1 // CAST(value AS INTEGER)) 时遇到唯一的 0 才抛出 InvalidInputException。期望从 1000 行缩到 1 行。",
+  "rows": 1000,
+  "expected_min_rows": 1,
+  "error_type": "InvalidInputException",
+  "sql": "SELECT item, SUM(1 // CAST(value AS INTEGER)) AS total FROM readings GROUP BY item"
+}
